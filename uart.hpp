@@ -4,6 +4,7 @@
 #include <functional>
 #include <deque>
 #include <mutex>
+#include <vector>
 #include <stdint.h>
 #include "config.hpp"
 
@@ -19,11 +20,16 @@ public:
         State state = State::Waiting;
     }
     void put_samples(const unsigned int *buffer, unsigned int n);
+    int verify_what_25_out_of_30_last_bits_are();
+    void reset_last_bits();
+    void add_last_bit(unsigned int bit);
+
 private:
     std::function<void(uint8_t)> get_byte;
     unsigned int bits_count;
     unsigned int sample_count;
     uint8_t byte;
+    std::vector<unsigned int> last_bits;
     unsigned int byte_counter;
     State state;
 

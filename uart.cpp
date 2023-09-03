@@ -7,65 +7,137 @@ void UART_RX::put_samples(const unsigned int *buffer, unsigned int n)
 
     for (int i = 0; i < n; i++) {
         if (state == State::Waiting) {
-            if (buffer[i] == 1) {
-                continue;
-            } else {
-                // std::cout << std::endl;
-                // std::cout << "Receiving Start" << std::endl;
-                // std::cout << buffer[i];
+            if (buffer[i] != 1)
+            {
                 state = State::ReceivingStart;
                 sample_count++;
             }
         } else if (state == State::ReceivingStart) {
-            if (sample_count < SAMPLES_PER_SYMBOL) {
-                // std::cout << buffer[i];
+            if (sample_count < (SAMPLES_PER_SYMBOL / 2 + (SAMPLES_PER_SYMBOL * 3) / 32))
+            {
                 sample_count++;
-            } else {
-                // std::cout << std::endl;
-                // std::cout << "Receiving" << std::endl;
-                // std::cout << buffer[i];
-                sample_count=0;
-                state = State::Receiving;
+            }
+            else
+            {
+                int last_bit = verify_what_25_out_of_30_last_bits_are();
+                reset_last_bits();
+                if (last_bit == -1 | last_bit == 1)
+                {
+                    state = State::Waiting;
+                    sample_count = 0;
+                    continue;
+                }
+                else
+                {
+                    state = State::Receiving;
+                    sample_count = 0;
+                    continue;
+                }
             }
         } else if (state == State::Receiving) {
             if (bits_count < 7) {
                 if (sample_count < SAMPLES_PER_SYMBOL-1) {
                     sample_count++;
-                    // std::cout << buffer[i];
-                } else {
-                    // std::cout << std::endl;
+                }
+                else
+                {
                     sample_count = 0;
-                    // std::cout << "BIT: "<< buffer[i-1] << std::endl;
-                    // std::cout << buffer[i];
-                    byte |= (buffer[i-1] << bits_count);
-                    // byte <<= 1;
+                    int last_bit = verify_what_25_out_of_30_last_bits_are();
+                    reset_last_bits();
+                    if (last_bit == -1)
+                    {
+                        state = State::Waiting;
+                        sample_count = 0;
+                        continue;
+                    }
+                    byte |= (last_bit << bits_count);
                     bits_count++;
                 }
             } else {
-                byte |= (buffer[i-1] << bits_count);
-                byte_counter ++;
-                std::bitset<8> bit_byte(byte);
-                // std::cout << "BYTE NO " << byte_counter << " " << bit_byte << std::endl;
-                get_byte(byte);
-                byte = 0;
-                // std::cout << "Receiving End" << std::endl;
-                // std::cout << buffer[i];
-                sample_count=2;
-                bits_count=0;
-                state = State::ReceivingEnd;
+                if (sample_count < SAMPLES_PER_SYMBOL - 1)
+                {
+                    sample_count++;
+                }
+                else
+                {
+                    int last_bit = verify_what_25_out_of_30_last_bits_are();
+                    reset_last_bits();
+                    if (last_bit == -1)
+                    {
+                        state = State::Waiting;
+                        sample_count = 0;
+                        continue;
+                    }
+                    byte |= (last_bit << bits_count);
+                    byte_counter++;
+                    std::bitset<8> bit_byte(byte);
+                    get_byte(byte);
+                    byte = 0;
+                    sample_count = 2;
+                    bits_count = 0;
+                    state = State::ReceivingEnd;
+                }
             }
         } else if (state == State::ReceivingEnd) {
-            if (sample_count < SAMPLES_PER_SYMBOL - 1) {
+            if (sample_count < (SAMPLES_PER_SYMBOL / 2))
+            {
                 sample_count++;
-                // std::cout << buffer[i];
-            } else {
-                // std::cout << buffer[i] << std::endl;
-                // std::cout << "Waiting" << std::endl;
+            }
+            else
+            {
+                int last_bit = verify_what_25_out_of_30_last_bits_are();
+                reset_last_bits();
                 sample_count=0;
                 state = State::Waiting;
             }
         }
+        add_last_bit(buffer[i]);
     }
+}
+
+void UART_RX::reset_last_bits()
+{
+    last_bits.clear();
+}
+
+void UART_RX::add_last_bit(unsigned int bit)
+{
+    last_bits.push_back(bit);
+}
+
+int UART_RX::verify_what_25_out_of_30_last_bits_are()
+{
+    // Verifies if 25 out of the last 30 bits are 1 or 0 (returns -1 if there are less than 25 bits)
+    int zero_count = 0;
+    int one_count = 0;
+    if (last_bits.size() < 30)
+    {
+        return -1;
+    }
+    for (int i = 0; i < last_bits.size(); i++)
+    {
+    }
+
+    for (int i = last_bits.size() - 30 - 1; i < last_bits.size(); i++)
+    {
+        if (last_bits[i] == 1)
+        {
+            one_count++;
+        }
+        else
+        {
+            zero_count++;
+        }
+    }
+    if (one_count > 25)
+    {
+        return 1;
+    }
+    else if (zero_count > 25)
+    {
+        return 0;
+    }
+    return -1;
 }
 
 void UART_TX::put_byte(uint8_t byte)
